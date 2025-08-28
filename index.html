@@ -47,6 +47,7 @@
         .content {
             display: grid;
             grid-template-columns: 1fr 400px;
+            grid-template-rows: 300px 300px;
             gap: 0;
             min-height: 600px;
         }
@@ -57,13 +58,39 @@
 
         #map {
             width: 100%;
-            height: 600px;
+            height: 300px;
+        }
+
+        .streetview-section {
+            position: relative;
+            border-top: 1px solid #e9ecef;
+        }
+
+        #streetView {
+            width: 100%;
+            height: 300px;
+        }
+
+        .streetview-header {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #333;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .sidebar {
             padding: 30px;
             background: #f8f9fa;
             border-left: 1px solid #e9ecef;
+            grid-row: 1 / 3;
+            overflow-y: auto;
         }
 
         .progress-card {
@@ -232,15 +259,17 @@
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
+                grid-template-rows: 250px 250px auto;
             }
             
             .sidebar {
                 border-left: none;
                 border-top: 1px solid #e9ecef;
+                grid-row: 3;
             }
             
-            #map {
-                height: 400px;
+            #map, #streetView {
+                height: 250px;
             }
         }
     </style>
@@ -255,6 +284,11 @@
         <div class="content">
             <div class="map-section">
                 <div id="map"></div>
+            </div>
+            
+            <div class="streetview-section">
+                <div class="streetview-header">📍 Street View - Your Virtual Location</div>
+                <div id="streetView"></div>
             </div>
 
             <div class="sidebar">
@@ -354,6 +388,7 @@
         let currentMarker;
         let directionsService;
         let directionsRenderer;
+        let streetViewPanorama;
 
         // Initialize the app
         function initApp() {
@@ -394,6 +429,18 @@
                     }
                 ]
             });
+
+            // Initialize Street View
+            streetViewPanorama = new google.maps.StreetViewPanorama(
+                document.getElementById('streetView'),
+                {
+                    position: { lat: 28.6139, lng: 77.2090 }, // Default to Delhi
+                    pov: { heading: 165, pitch: 0 },
+                    zoom: 1,
+                    addressControl: false,
+                    showRoadLabels: true
+                }
+            );
 
             // Initialize directions service and renderer
             directionsService = new google.maps.DirectionsService();
@@ -621,30 +668,53 @@
 
             const progress = Math.min(walkData.totalDistance / walkData.route.totalKm, 1);
             
-            // Calculate position along the route
-            const currentLat = walkData.route.start.lat + 
-                (walkData.route.end.lat - walkData.route.start.lat) * progress;
-            const currentLng = walkData.route.start.lng + 
-                (walkData.route.end.lng - walkData.route.start.lng) * progress;
-
-            const currentPosition = { lat: currentLat, lng: currentLng };
-
             // Remove old marker
             if (currentMarker) {
                 currentMarker.setMap(null);
             }
 
-            // Add new current position marker
-            currentMarker = new google.maps.Marker({
-                position: currentPosition,
-                map: map,
-                title: 'Your Current Virtual Location',
-                icon: {
-                    url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
-                    scaledSize: new google.maps.Size(35, 35)
-                },
-                animation: google.maps.Animation.BOUNCE
-            });
+            let currentPosition;
+
+            // If we have directions data, calculate position along the route
+            if (directionsRenderer.getDirections()) {
+                const route = directionsRenderer.getDirections().routes[0];
+                const path = route.overview_path;
+                currentPosition = getPositionAlongPath(path, progress);
+                
+                // Add current position marker
+                currentMarker = new google.maps.Marker({
+                    position: currentPosition,
+                    map: map,
+                    title: 'Your Current Virtual Location',
+                    icon: {
+                        url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
+                        scaledSize: new google.maps.Size(35, 35)
+                    },
+                    animation: google.maps.Animation.BOUNCE
+                });
+            } else {
+                // Fallback to simple calculation for older routes
+                const currentLat = walkData.route.start.lat + 
+                    (walkData.route.end.lat - walkData.route.start.lat) * progress;
+                const currentLng = walkData.route.start.lng + 
+                    (walkData.route.end.lng - walkData.route.start.lng) * progress;
+
+                currentPosition = { lat: currentLat, lng: currentLng };
+
+                currentMarker = new google.maps.Marker({
+                    position: currentPosition,
+                    map: map,
+                    title: 'Your Current Virtual Location',
+                    icon: {
+                        url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
+                        scaledSize: new google.maps.Size(35, 35)
+                    },
+                    animation: google.maps.Animation.BOUNCE
+                });
+            }
+
+            // Update Street View to current position
+            updateStreetView(currentPosition);
 
             // Stop animation after 2 seconds
             setTimeout(() => {
@@ -652,6 +722,70 @@
                     currentMarker.setAnimation(null);
                 }
             }, 2000);
+        }
+
+        // Update Street View to show current position
+        function updateStreetView(position) {
+            if (!streetViewPanorama || !position) return;
+
+            // Create Street View service to check if imagery is available
+            const streetViewService = new google.maps.StreetViewService();
+            
+            streetViewService.getPanorama({
+                location: position,
+                radius: 1000, // Search within 1km for street view imagery
+                source: google.maps.StreetViewSource.OUTDOOR
+            }, (data, status) => {
+                if (status === 'OK') {
+                    // Street View is available at this location
+                    streetViewPanorama.setPano(data.location.pano);
+                    streetViewPanorama.setPov({
+                        heading: 270, // Face west by default
+                        pitch: 0
+                    });
+                    streetViewPanorama.setZoom(1);
+                    
+                    // Update header to show we found street view
+                    document.querySelector('.streetview-header').textContent = 
+                        `📍 Street View - Your Virtual Location`;
+                } else {
+                    // No street view available, show a message
+                    streetViewPanorama.setPosition(position);
+                    document.querySelector('.streetview-header').textContent = 
+                        `📍 No Street View Available - Remote Location`;
+                }
+            });
+        }
+
+        // Calculate position along the actual route path
+        function getPositionAlongPath(path, progress) {
+            if (progress <= 0) return path[0];
+            if (progress >= 1) return path[path.length - 1];
+
+            // Calculate total path distance
+            let totalDistance = 0;
+            const distances = [0];
+            
+            for (let i = 0; i < path.length - 1; i++) {
+                const segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(path[i], path[i + 1]);
+                totalDistance += segmentDistance;
+                distances.push(totalDistance);
+            }
+
+            // Find target distance
+            const targetDistance = progress * totalDistance;
+
+            // Find which segment contains our target point
+            for (let i = 0; i < distances.length - 1; i++) {
+                if (targetDistance >= distances[i] && targetDistance <= distances[i + 1]) {
+                    // Interpolate within this segment
+                    const segmentProgress = (targetDistance - distances[i]) / (distances[i + 1] - distances[i]);
+                    
+                    return google.maps.geometry.spherical.interpolate(path[i], path[i + 1], segmentProgress);
+                }
+            }
+
+            return path[path.length - 1];
         }
 
         // Update location description
@@ -714,7 +848,7 @@
 
     <!-- Google Maps API with your key -->
     <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAqRK8Qz1cHH_n6HSp5qc41pwvMCQiIj5k&callback=initMap">
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAqRK8Qz1cHH_n6HSp5qc41pwvMCQiIj5k&libraries=geometry&callback=initMap">
     </script>
 </body>
 </html>
