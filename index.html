@@ -474,6 +474,12 @@
             const routeInfo = document.querySelector('.route-info .route-details');
             routeInfo.innerHTML = '<div class="loading">🗺️ Creating route...</div>';
 
+            // Clear any existing route first
+            if (routePath) {
+                routePath.setMap(null);
+            }
+            directionsRenderer.setDirections({routes: []});
+
             // Use Google Directions API to get route
             const request = {
                 origin: startLocation,
@@ -508,6 +514,9 @@
                     // Display the route on map
                     directionsRenderer.setDirections(result);
 
+                    // Center map on new route
+                    map.fitBounds(result.routes[0].bounds);
+
                     // Save data and update displays
                     saveData();
                     updateProgress();
@@ -526,33 +535,30 @@
 
         // Load current route on map
         function loadCurrentRoute() {
-            if (walkData.route.polyline) {
-                // If we have detailed route data, use directions renderer
-                const request = {
-                    origin: walkData.route.start,
-                    destination: walkData.route.end,
-                    travelMode: google.maps.TravelMode.WALKING
-                };
+            // Always try to create a fresh route based on current route data
+            const request = {
+                origin: walkData.route.start,
+                destination: walkData.route.end,
+                travelMode: google.maps.TravelMode.WALKING
+            };
 
-                directionsService.route(request, (result, status) => {
-                    if (status === 'OK') {
-                        directionsRenderer.setDirections(result);
-                        updateCurrentPosition();
-                    }
-                });
-            } else {
-                // Fallback to simple polyline for older data
-                routePath = new google.maps.Polyline({
-                    path: [walkData.route.start, walkData.route.end],
-                    geodesic: true,
-                    strokeColor: '#4facfe',
-                    strokeOpacity: 1.0,
-                    strokeWeight: 4
-                });
-                routePath.setMap(map);
-                
-                updateCurrentPosition();
-            }
+            directionsService.route(request, (result, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(result);
+                    updateCurrentPosition();
+                } else {
+                    // Fallback to simple polyline if directions fail
+                    routePath = new google.maps.Polyline({
+                        path: [walkData.route.start, walkData.route.end],
+                        geodesic: true,
+                        strokeColor: '#4facfe',
+                        strokeOpacity: 1.0,
+                        strokeWeight: 4
+                    });
+                    routePath.setMap(map);
+                    updateCurrentPosition();
+                }
+            });
         }
 
         // Add a new walk
