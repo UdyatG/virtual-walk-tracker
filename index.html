@@ -61,6 +61,36 @@
             height: 300px;
         }
 
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+        }
+
+        .map-btn {
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .map-btn:hover {
+            background: white;
+            transform: translateY(-1px);
+        }
+
+        .map-btn:active {
+            transform: translateY(0);
+        }
+
         .streetview-section {
             position: relative;
             border-top: 1px solid #e9ecef;
@@ -202,6 +232,7 @@
             background: white;
             border-radius: 10px;
             padding: 20px;
+            margin-bottom: 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         }
 
@@ -256,6 +287,64 @@
             margin: 0;
         }
 
+        .location-info {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .location-info h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .location-content {
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #555;
+        }
+
+        .location-fact {
+            background: #f8f9fa;
+            border-left: 4px solid #4facfe;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .location-fact strong {
+            color: #4facfe;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .loading-location {
+            color: #999;
+            text-align: center;
+            font-style: italic;
+            margin: 20px 0;
+        }
+
+        .wiki-link {
+            color: #4facfe;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .wiki-link:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
@@ -283,6 +372,10 @@
 
         <div class="content">
             <div class="map-section">
+                <div class="map-controls">
+                    <button class="map-btn" onclick="showFullRoute()">📍 Full Route</button>
+                    <button class="map-btn" onclick="zoomToCurrentLocation()">🔍 My Location</button>
+                </div>
                 <div id="map"></div>
             </div>
             
@@ -320,14 +413,6 @@
                     <button class="btn" onclick="addWalk()">Add Walk</button>
                 </div>
 
-                <div class="input-section">
-                    <h3>📋 Walk History</h3>
-                    <div id="walkHistory" class="walk-history">
-                        <p class="no-walks">No walks recorded yet. Add your first walk!</p>
-                    </div>
-                    <button class="btn" onclick="clearHistory()" style="background: #dc3545; margin-top: 10px;">Clear All History</button>
-                </div>
-
                 <div class="progress-card">
                     <h3>🎯 Progress</h3>
                     <div class="progress-bar">
@@ -355,6 +440,14 @@
                     </div>
                 </div>
 
+                <div class="input-section">
+                    <h3>📋 Walk History</h3>
+                    <div id="walkHistory" class="walk-history">
+                        <p class="no-walks">No walks recorded yet. Add your first walk!</p>
+                    </div>
+                    <button class="btn" onclick="clearHistory()" style="background: #dc3545; margin-top: 10px;">Clear All History</button>
+                </div>
+
                 <div class="route-info">
                     <h3>🗺️ Current Route</h3>
                     <div class="route-details">
@@ -363,6 +456,13 @@
                         Famous route through Rajasthan<br><br>
                         <em>Current location:</em><br>
                         <span id="currentLocation">Starting in Delhi...</span>
+                    </div>
+                </div>
+
+                <div class="location-info" id="locationInfo">
+                    <h3>📍 Location Info</h3>
+                    <div class="location-content" id="locationContent">
+                        <p class="loading-location">🌍 Discovering your virtual location...</p>
                     </div>
                 </div>
             </div>
@@ -395,12 +495,21 @@
             // Set today's date as default
             document.getElementById('date').valueAsDate = new Date();
             
-            // Set default route locations
-            document.getElementById('startLocation').value = 'Delhi, India';
-            document.getElementById('endLocation').value = 'Jaipur, India';
-            
-            // Load saved data
+            // Load saved data first
             loadData();
+            
+            // Set route locations from saved data
+            const routeName = walkData.route.name || "Delhi to Jaipur";
+            const routeParts = routeName.split(' to ');
+            
+            if (routeParts.length === 2) {
+                document.getElementById('startLocation').value = routeParts[0].trim();
+                document.getElementById('endLocation').value = routeParts[1].trim();
+            } else {
+                // Fallback to defaults
+                document.getElementById('startLocation').value = 'Delhi, India';
+                document.getElementById('endLocation').value = 'Jaipur, India';
+            }
             
             // Update display
             updateProgress();
@@ -470,6 +579,34 @@
                 return;
             }
 
+            // Check if this is the same route as current one
+            const newRouteName = `${startLocation} to ${endLocation}`;
+            const currentRouteName = walkData.route.name;
+            
+            const isSameRoute = (
+                newRouteName.toLowerCase() === currentRouteName.toLowerCase() ||
+                (startLocation.toLowerCase() === currentRouteName.split(' to ')[0]?.toLowerCase().trim() &&
+                 endLocation.toLowerCase() === currentRouteName.split(' to ')[1]?.toLowerCase().trim())
+            );
+
+            if (isSameRoute) {
+                alert('This appears to be the same route you already have. No changes needed!');
+                return;
+            }
+
+            // Ask user if they want to keep their walk data when switching routes
+            const hasWalkData = walkData.walks.length > 0;
+            let keepWalkData = false;
+
+            if (hasWalkData) {
+                keepWalkData = confirm(
+                    `You have ${walkData.walks.length} walks recorded (${walkData.totalDistance.toFixed(1)} km).\n\n` +
+                    `Do you want to KEEP this walk data for your new route?\n\n` +
+                    `Click OK to KEEP your walks\n` +
+                    `Click Cancel to START FRESH`
+                );
+            }
+
             // Show loading message
             const routeInfo = document.querySelector('.route-info .route-details');
             routeInfo.innerHTML = '<div class="loading">🗺️ Creating route...</div>';
@@ -489,9 +626,9 @@
 
             directionsService.route(request, (result, status) => {
                 if (status === 'OK') {
-                    // Clear old route data and reset progress
-                    walkData.totalDistance = 0;
-                    walkData.walks = [];
+                    // Store old walk data if user wants to keep it
+                    const oldWalks = keepWalkData ? [...walkData.walks] : [];
+                    const oldDistance = keepWalkData ? walkData.totalDistance : 0;
                     
                     // Update route data
                     const route = result.routes[0];
@@ -511,6 +648,15 @@
                         polyline: route.overview_polyline
                     };
 
+                    // Restore walk data if user chose to keep it
+                    if (keepWalkData) {
+                        walkData.walks = oldWalks;
+                        walkData.totalDistance = oldDistance;
+                    } else {
+                        walkData.walks = [];
+                        walkData.totalDistance = 0;
+                    }
+
                     // Display the route on map
                     directionsRenderer.setDirections(result);
 
@@ -523,7 +669,11 @@
                     updateWalkHistory();
                     updateCurrentPosition();
 
-                    alert(`✅ New route created!\n${walkData.route.name}\nDistance: ${walkData.route.totalKm} km`);
+                    const message = keepWalkData 
+                        ? `✅ Route updated!\n${walkData.route.name}\nDistance: ${walkData.route.totalKm} km\n\nYour ${oldWalks.length} walks (${oldDistance.toFixed(1)} km) have been kept!`
+                        : `✅ New route created!\n${walkData.route.name}\nDistance: ${walkData.route.totalKm} km`;
+                    
+                    alert(message);
                 } else {
                     alert('Could not create route. Please check your locations and try again.\n\nTips:\n- Use specific addresses\n- Include city and country\n- Try "City, Country" format');
                     
@@ -545,8 +695,13 @@
             directionsService.route(request, (result, status) => {
                 if (status === 'OK') {
                     directionsRenderer.setDirections(result);
-                    updateCurrentPosition();
+                    
+                    // Wait a bit for the route to be fully rendered, then update position
+                    setTimeout(() => {
+                        updateCurrentPosition();
+                    }, 1000);
                 } else {
+                    console.log('Directions request failed due to ' + status);
                     // Fallback to simple polyline if directions fail
                     routePath = new google.maps.Polyline({
                         path: [walkData.route.start, walkData.route.end],
@@ -681,46 +836,42 @@
 
             let currentPosition;
 
-            // If we have directions data, calculate position along the route
-            if (directionsRenderer.getDirections()) {
+            // Always try to use directions data for accurate positioning
+            if (directionsRenderer.getDirections() && directionsRenderer.getDirections().routes.length > 0) {
                 const route = directionsRenderer.getDirections().routes[0];
                 const path = route.overview_path;
-                currentPosition = getPositionAlongPath(path, progress);
                 
-                // Add current position marker
-                currentMarker = new google.maps.Marker({
-                    position: currentPosition,
-                    map: map,
-                    title: 'Your Current Virtual Location',
-                    icon: {
-                        url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
-                        scaledSize: new google.maps.Size(35, 35)
-                    },
-                    animation: google.maps.Animation.BOUNCE
-                });
+                if (path && path.length > 1) {
+                    currentPosition = getPositionAlongPath(path, progress);
+                } else {
+                    // Fallback if path is not available
+                    currentPosition = interpolatePosition(walkData.route.start, walkData.route.end, progress);
+                }
             } else {
-                // Fallback to simple calculation for older routes
-                const currentLat = walkData.route.start.lat + 
-                    (walkData.route.end.lat - walkData.route.start.lat) * progress;
-                const currentLng = walkData.route.start.lng + 
-                    (walkData.route.end.lng - walkData.route.start.lng) * progress;
-
-                currentPosition = { lat: currentLat, lng: currentLng };
-
-                currentMarker = new google.maps.Marker({
-                    position: currentPosition,
-                    map: map,
-                    title: 'Your Current Virtual Location',
-                    icon: {
-                        url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
-                        scaledSize: new google.maps.Size(35, 35)
-                    },
-                    animation: google.maps.Animation.BOUNCE
-                });
+                // Fallback to simple calculation
+                currentPosition = interpolatePosition(walkData.route.start, walkData.route.end, progress);
             }
+
+            // Create the marker
+            currentMarker = new google.maps.Marker({
+                position: currentPosition,
+                map: map,
+                title: 'Your Current Virtual Location',
+                icon: {
+                    url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>'),
+                    scaledSize: new google.maps.Size(35, 35)
+                },
+                animation: google.maps.Animation.BOUNCE
+            });
+
+            // Zoom to current location for better context
+            zoomToCurrentLocation(currentPosition);
 
             // Update Street View to current position
             updateStreetView(currentPosition);
+
+            // Update location information
+            updateLocationInfo(currentPosition);
 
             // Stop animation after 2 seconds
             setTimeout(() => {
@@ -728,6 +879,119 @@
                     currentMarker.setAnimation(null);
                 }
             }, 2000);
+        }
+
+        // Simple interpolation between two points
+        function interpolatePosition(start, end, progress) {
+            const lat = start.lat + (end.lat - start.lat) * progress;
+            const lng = start.lng + (end.lng - start.lng) * progress;
+            return { lat: lat, lng: lng };
+        }
+
+        // Zoom map to current location with appropriate zoom level
+        function zoomToCurrentLocation(position) {
+            if (!map) return;
+
+            // If no position provided, use current marker position
+            if (!position && currentMarker) {
+                position = currentMarker.getPosition();
+            }
+
+            if (!position) return;
+
+            // Determine zoom level based on route progress and total distance
+            let zoomLevel;
+            const routeDistance = walkData.route.totalKm;
+            
+            if (routeDistance > 1000) {
+                // Very long routes (1000km+): City level zoom
+                zoomLevel = 10;
+            } else if (routeDistance > 500) {
+                // Long routes (500-1000km): Regional zoom
+                zoomLevel = 11;
+            } else if (routeDistance > 200) {
+                // Medium routes (200-500km): District level zoom
+                zoomLevel = 12;
+            } else if (routeDistance > 50) {
+                // Short routes (50-200km): City district zoom
+                zoomLevel = 13;
+            } else {
+                // Very short routes (<50km): Neighborhood zoom
+                zoomLevel = 14;
+            }
+
+            // Smoothly pan and zoom to current position
+            map.panTo(position);
+            
+            // Smooth zoom animation
+            setTimeout(() => {
+                map.setZoom(zoomLevel);
+            }, 500);
+
+            // Add a subtle animation effect to emphasize the location change
+            if (currentMarker) {
+                setTimeout(() => {
+                    currentMarker.setAnimation(google.maps.Animation.BOUNCE);
+                    setTimeout(() => {
+                        currentMarker.setAnimation(null);
+                    }, 1500);
+                }, 800);
+            }
+        }
+
+        // Show full route on map
+        function showFullRoute() {
+            if (!map || !directionsRenderer.getDirections()) return;
+
+            // Fit map to show entire route
+            const bounds = directionsRenderer.getDirections().routes[0].bounds;
+            map.fitBounds(bounds);
+            
+            // Add some padding to the bounds
+            setTimeout(() => {
+                const currentZoom = map.getZoom();
+                if (currentZoom > 0) {
+                    map.setZoom(currentZoom - 1);
+                }
+            }, 500);
+        }
+
+        // Calculate position along the actual route path
+        function getPositionAlongPath(path, progress) {
+            if (!path || path.length === 0) return null;
+            if (progress <= 0) return path[0];
+            if (progress >= 1) return path[path.length - 1];
+
+            try {
+                // Calculate total path distance
+                let totalDistance = 0;
+                const distances = [0];
+                
+                for (let i = 0; i < path.length - 1; i++) {
+                    const segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(path[i], path[i + 1]);
+                    totalDistance += segmentDistance;
+                    distances.push(totalDistance);
+                }
+
+                // Find target distance
+                const targetDistance = progress * totalDistance;
+
+                // Find which segment contains our target point
+                for (let i = 0; i < distances.length - 1; i++) {
+                    if (targetDistance >= distances[i] && targetDistance <= distances[i + 1]) {
+                        // Interpolate within this segment
+                        const segmentProgress = (targetDistance - distances[i]) / (distances[i + 1] - distances[i]);
+                        
+                        return google.maps.geometry.spherical.interpolate(path[i], path[i + 1], segmentProgress);
+                    }
+                }
+
+                return path[path.length - 1];
+            } catch (error) {
+                console.log('Error calculating position along path:', error);
+                // Fallback to simple interpolation
+                return interpolatePosition(path[0], path[path.length - 1], progress);
+            }
         }
 
         // Update Street View to show current position
@@ -763,35 +1027,121 @@
             });
         }
 
-        // Calculate position along the actual route path
-        function getPositionAlongPath(path, progress) {
-            if (progress <= 0) return path[0];
-            if (progress >= 1) return path[path.length - 1];
+        // Update location information with Wikipedia data
+        function updateLocationInfo(position) {
+            if (!position) return;
 
-            // Calculate total path distance
-            let totalDistance = 0;
-            const distances = [0];
-            
-            for (let i = 0; i < path.length - 1; i++) {
-                const segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(path[i], path[i + 1]);
-                totalDistance += segmentDistance;
-                distances.push(totalDistance);
-            }
+            const locationContent = document.getElementById('locationContent');
+            locationContent.innerHTML = '<p class="loading-location">🔍 Discovering local information...</p>';
 
-            // Find target distance
-            const targetDistance = progress * totalDistance;
+            // Get location information
+            Promise.all([
+                getLocationName(position),
+                getWikipediaInfo(position)
+            ]).then(([locationName, wikiInfo]) => {
+                let contentHTML = '';
 
-            // Find which segment contains our target point
-            for (let i = 0; i < distances.length - 1; i++) {
-                if (targetDistance >= distances[i] && targetDistance <= distances[i + 1]) {
-                    // Interpolate within this segment
-                    const segmentProgress = (targetDistance - distances[i]) / (distances[i + 1] - distances[i]);
-                    
-                    return google.maps.geometry.spherical.interpolate(path[i], path[i + 1], segmentProgress);
+                // Location name
+                if (locationName) {
+                    contentHTML += `<div class="location-fact"><strong>📍 You're virtually near:</strong>${locationName}</div>`;
                 }
-            }
 
-            return path[path.length - 1];
+                // Wikipedia information
+                if (wikiInfo && wikiInfo.length > 0) {
+                    contentHTML += `<div class="location-fact"><strong>📚 Did you know?</strong>`;
+                    wikiInfo.forEach(info => {
+                        const snippet = info.extract ? info.extract.substring(0, 200) + '...' : 'Interesting location along your route.';
+                        contentHTML += `
+                            <div style="margin-top: 8px;">
+                                <strong>${info.title}</strong><br>
+                                ${snippet}
+                                <a href="https://en.wikipedia.org/wiki/${info.title}" target="_blank" class="wiki-link">Read more →</a>
+                            </div>
+                        `;
+                    });
+                    contentHTML += '</div>';
+                } else {
+                    contentHTML += '<div class="location-fact"><strong>🌍 Exploring</strong>You\'re in a beautiful area! Keep walking to discover more interesting places along your route.</div>';
+                }
+
+                locationContent.innerHTML = contentHTML;
+
+            }).catch(error => {
+                console.log('Location info error:', error);
+                locationContent.innerHTML = `
+                    <div class="location-fact">
+                        <strong>🌍 Virtual Journey</strong>
+                        You're making great progress on your route! Keep walking to discover new places.
+                    </div>
+                `;
+            });
+        }
+
+        // Get location name from coordinates
+        function getLocationName(position) {
+            return new Promise((resolve) => {
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ location: position }, (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        const addressComponents = results[0].address_components;
+                        let city = '';
+                        let country = '';
+                        
+                        addressComponents.forEach(component => {
+                            if (component.types.includes('locality') || component.types.includes('administrative_area_level_2')) {
+                                city = component.long_name;
+                            }
+                            if (component.types.includes('country')) {
+                                country = component.long_name;
+                            }
+                        });
+                        
+                        resolve(city ? `${city}, ${country}` : country);
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        }
+
+        // Get Wikipedia information for location
+        function getWikipediaInfo(position) {
+            return new Promise((resolve) => {
+                const lat = position.lat;
+                const lng = position.lng;
+                
+                // Wikipedia API for nearby articles
+                const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/nearby?lat=${lat}&lng=${lng}&radius=10000&limit=3`;
+                
+                fetch(wikiUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.pages && data.pages.length > 0) {
+                            // For multiple titles, we'll just take the first one for simplicity
+                            const firstTitle = data.pages[0].title;
+                            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(firstTitle)}`;
+                            
+                            return fetch(summaryUrl);
+                        } else {
+                            resolve([]);
+                        }
+                    })
+                    .then(response => response ? response.json() : null)
+                    .then(summary => {
+                        if (summary && !summary.type) {
+                            resolve([{
+                                title: summary.title,
+                                extract: summary.extract
+                            }]);
+                        } else {
+                            resolve([]);
+                        }
+                    })
+                    .catch(error => {
+                        console.log('Wikipedia API error:', error);
+                        resolve([]);
+                    });
+            });
         }
 
         // Update location description
@@ -845,6 +1195,10 @@
                 const savedData = JSON.parse(saved);
                 walkData.totalDistance = savedData.totalDistance || 0;
                 walkData.walks = savedData.walks || [];
+                // Keep route data if it exists
+                if (savedData.route) {
+                    walkData.route = savedData.route;
+                }
             }
         }
 
